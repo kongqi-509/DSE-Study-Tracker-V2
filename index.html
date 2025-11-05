@@ -34,50 +34,48 @@ input[type=time],input[type=text]{padding:4px 6px;border:1px solid #ccc;border-r
 <h1>📚 每日打卡</h1>
 
 <div class="card">
+  <h2>🧠 今日建議科目</h2>
+  <p>💡 主科：<b id="mainSubject">尚未載入</b>　🌿 副科：<b id="subSubject">尚未載入</b></p>
+  <hr>
 
-<h2>🧠 今日建議科目</h2>
-<p>💡 主科：<b id="mainSubject">尚未載入</b>　🌿 副科：<b id="subSubject">尚未載入</b></p>
-<hr>
+  <h2>🕒 今日時段設定</h2>
+  <button class="add-btn" id="addRowBtn">➕ 新增時段</button>
+  <table id="todayTable">
+    <thead>
+      <tr>
+        <th>開始</th>
+        <th>結束</th>
+        <th>內容</th>
+        <th>完成 ✅</th>
+        <th>刪除</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-<h2>🕒 今日時段設定</h2>
-<button class="add-btn" id="addRowBtn">➕ 新增時段</button>
-<table id="todayTable">
-  <thead>
-    <tr>
-      <th>開始</th>
-      <th>結束</th>
-      <th>內容</th>
-      <th>完成 ✅</th>
-      <th>刪除</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
+  <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
+  <div id="percentTxt">0%</div>
 
-<div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
-<div id="percentTxt">0%</div>
+  <h3>⏱️ 計時器</h3>
+  <div id="timerDisplay">00:00:00</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;">
+    <button class="timer-btn" id="startTimer">▶️ 開始</button>
+    <button class="timer-btn" id="pauseTimer">⏸ 暫停</button>
+    <button class="timer-btn" id="resetTimer">⏹ 歸零</button>
+  </div>
 
-<h3>⏱️ 計時器</h3>
-<div id="timerDisplay">00:00:00</div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;">
-  <button class="timer-btn" id="startTimer">▶️ 開始</button>
-  <button class="timer-btn" id="pauseTimer">⏸ 暫停</button>
-  <button class="timer-btn" id="resetTimer">⏹ 歸零</button>
-</div>
+  <div style="margin-top:15px;display:flex;flex-wrap:wrap;gap:10px;">
+    <button class="save-btn" id="saveBtn">💾 儲存今日紀錄</button>
+    <button class="clear-btn" id="clearBtn">🗑 清空全部</button>
+    <button class="history-btn" id="historyBtn">📜 查詢歷史</button>
+    <button class="export-btn" id="exportBtn">📤 匯出 CSV</button>
+  </div>
 
-<div style="margin-top:15px;display:flex;flex-wrap:wrap;gap:10px;">
-  <button class="save-btn" id="saveBtn">💾 儲存今日紀錄</button>
-  <button class="clear-btn" id="clearBtn">🗑 清空全部</button>
-  <button class="history-btn" id="historyBtn">📜 查詢歷史</button>
-  <button class="export-btn" id="exportBtn">📤 匯出 CSV</button>
-</div>
-
-<div id="historyContainer" style="margin-top:15px;display:none;">
-  <h3>📅 歷史紀錄</h3>
-  <select id="historySelect"></select>
-  <pre id="historyOutput" style="background:#f8f9fa;padding:10px;border-radius:6px;white-space:pre-wrap;"></pre>
-</div>
-
+  <div id="historyContainer" style="margin-top:15px;display:none;">
+    <h3>📅 歷史紀錄</h3>
+    <select id="historySelect"></select>
+    <pre id="historyOutput" style="background:#f8f9fa;padding:10px;border-radius:6px;white-space:pre-wrap;"></pre>
+  </div>
 </div>
 
 <footer style="text-align:center;color:#777;font-size:0.85em;margin-top:20px;">
@@ -94,20 +92,23 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("mainSubject").textContent=suggest.main||"未定";
   document.getElementById("subSubject").textContent=suggest.sub||"未定";
 
-  // === 進度計算：需完成全部才100% ===
+  const todayKey=new Date().toISOString().split("T")[0];
+  const allData=JSON.parse(localStorage.getItem("historyData")||"{}");
+
+  // --- 計算進度 ---
   function calcProgress(){
     const rows=[...tbody.children];
     const total=rows.length;
-    const doneCount=rows.filter(r=>r.querySelector(".check-cb").checked).length;
-    const percent=total?Math.round((doneCount/total)*100):0;
+    const done=rows.filter(r=>r.querySelector(".check-cb").checked).length;
+    const percent=total?Math.round((done/total)*100):0;
     const color=percent<50?
-        `rgb(255,${percent*5.1},0)`:`rgb(${255-(percent-50)*5.1*2},255,0)`;
+      `rgb(255,${percent*5.1},0)`:`rgb(${255-(percent-50)*5.1*2},255,0)`;
     progressBar.style.width=percent+"%";
     progressBar.style.background=`linear-gradient(90deg,orange,${color})`;
     percentTxt.textContent=percent+"%";
   }
 
-  // 新增一列
+  // --- 建立一列 ---
   function addRow(data={}){
     const row=document.createElement("tr");
     row.innerHTML=`
@@ -117,22 +118,25 @@ document.addEventListener("DOMContentLoaded",()=>{
       <td><input type="checkbox" class="check-cb" ${data.done?"checked":""}></td>
       <td><button class="del-btn">刪除</button></td>
     `;
+    // 每個輸入或勾選都會更新進度
     row.querySelectorAll("input").forEach(i=>i.addEventListener("input",calcProgress));
-    row.querySelector(".del-btn").addEventListener("click",()=>{row.remove();calcProgress();});
+    // 刪除列後也重新計算進度
+    row.querySelector(".del-btn").addEventListener("click",()=>{
+      row.remove();
+      calcProgress();
+    });
     tbody.appendChild(row);
+    calcProgress(); // 新增完立即重新計算
   }
 
-  // 載入今天資料
-  const todayKey=new Date().toISOString().split("T")[0];
-  const allData=JSON.parse(localStorage.getItem("historyData")||"{}");
-  if(allData[todayKey]){
-    allData[todayKey].forEach(addRow);
-  }else{
-    addRow({start:"17:00",end:"18:00",subj:"中文"});
-  }
-  calcProgress();
+  // --- 載入當日資料 ---
+  if(allData[todayKey]) allData[todayKey].forEach(addRow);
+  else addRow({start:"17:00",end:"18:00",subj:"中文"});
 
-  // === 儲存 ===
+  // --- 新增一列 ---
+  document.getElementById("addRowBtn").addEventListener("click",()=>addRow());
+
+  // --- 儲存 ---
   document.getElementById("saveBtn").addEventListener("click",()=>{
     const rows=[...tbody.children].map(r=>({
       start:r.querySelector(".start").value,
@@ -145,7 +149,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     alert("✅ 今日紀錄已儲存！");
   });
 
-  // === 清空 ===
+  // --- 清空 ---
   document.getElementById("clearBtn").addEventListener("click",()=>{
     if(confirm("確定要清空今天資料？")){
       delete allData[todayKey];
@@ -156,10 +160,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     }
   });
 
-  // 新增列
-  document.getElementById("addRowBtn").addEventListener("click",()=>addRow());
-
-  // === 匯出CSV ===
+  // --- 匯出 CSV ---
   document.getElementById("exportBtn").addEventListener("click",()=>{
     let csv="日期,開始,結束,內容,完成\n";
     for(const [date,rows] of Object.entries(allData)){
@@ -174,14 +175,14 @@ document.addEventListener("DOMContentLoaded",()=>{
     a.click();
   });
 
-  // === 查看歷史 ===
+  // --- 歷史查詢 ---
   const histCont=document.getElementById("historyContainer");
   const histSel=document.getElementById("historySelect");
   const histOut=document.getElementById("historyOutput");
   document.getElementById("historyBtn").addEventListener("click",()=>{
     histCont.style.display=histCont.style.display==="none"?"block":"none";
     histSel.innerHTML="";
-    Object.keys(allData).sort().forEach(d=>{
+    Object.keys(allData).sort().reverse().forEach(d=>{
       const opt=document.createElement("option");
       opt.value=d;opt.textContent=d;
       histSel.appendChild(opt);
@@ -191,32 +192,30 @@ document.addEventListener("DOMContentLoaded",()=>{
   histSel.addEventListener("change",()=>{
     const d=histSel.value;
     const rec=allData[d]||[];
-    histOut.textContent=rec.map((r,i)=>(
+    histOut.textContent=rec.map((r,i)=>
       `${i+1}. ${r.start}~${r.end} ${r.subj} ${r.done?"✅完成":"❌未完成"}`
-    )).join("\n");
+    ).join("\n");
   });
 
-  // === 計時器 ===
+  // --- 計時器功能 ---
   const timerDisplay=document.getElementById("timerDisplay");
-  let seconds=0,timer=null;
+  let sec=0,timer=null;
   const fmt=s=>{
     const h=Math.floor(s/3600).toString().padStart(2,"0");
     const m=Math.floor((s%3600)/60).toString().padStart(2,"0");
-    const sec=(s%60).toString().padStart(2,"0");
-    return `${h}:${m}:${sec}`;
+    const se=(s%60).toString().padStart(2,"0");
+    return `${h}:${m}:${se}`;
   };
-  const updateTimer=()=>timerDisplay.textContent=fmt(seconds);
-
+  function updateTimer(){timerDisplay.textContent=fmt(sec);}
   document.getElementById("startTimer").addEventListener("click",()=>{
-    if(!timer) timer=setInterval(()=>{seconds++;updateTimer();},1000);
+    if(!timer) timer=setInterval(()=>{sec++;updateTimer();},1000);
   });
   document.getElementById("pauseTimer").addEventListener("click",()=>{
     clearInterval(timer);timer=null;
   });
   document.getElementById("resetTimer").addEventListener("click",()=>{
-    clearInterval(timer);timer=null;seconds=0;updateTimer();
+    clearInterval(timer);timer=null;sec=0;updateTimer();
   });
-
 });
 </script>
 
