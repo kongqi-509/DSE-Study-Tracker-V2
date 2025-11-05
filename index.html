@@ -17,12 +17,11 @@ button:hover{opacity:0.9;}
 .save-btn{background:#0d6efd;}
 .clear-btn{background:#6c757d;}
 .del-btn{background:#dc3545;}
-.progress-container{background:#eee;height:15px;border-radius:8px;overflow:hidden;margin-top:10px;}
-.progress-bar{background:linear-gradient(90deg,#fbc02d,#ff9800);height:100%;width:0%;transition:width .4s ease;}
-#percentTxt{text-align:center;font-weight:bold;margin-top:5px;}
+.progress-container{background:#eee;height:18px;border-radius:10px;overflow:hidden;margin-top:12px;box-shadow:inset 0 1px 4px rgba(0,0,0,0.2);}
+.progress-bar{height:100%;width:0%;transition:width .4s ease,background .6s ease;}
+#percentTxt{text-align:center;font-weight:bold;margin-top:6px;}
 input[type=time],input[type=text]{padding:4px 6px;border:1px solid #ccc;border-radius:4px;}
 .check-cb{transform:scale(1.2);}
-.smallnote{color:#666;font-size:0.8em;margin-top:3px;}
 </style>
 </head>
 <body>
@@ -48,7 +47,6 @@ input[type=time],input[type=text]{padding:4px 6px;border:1px solid #ccc;border-r
     </tr>
   </thead>
   <tbody>
-    <!-- 動態填入 -->
   </tbody>
 </table>
 
@@ -77,13 +75,20 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("mainSubject").textContent=suggest.main||"未定";
   document.getElementById("subSubject").textContent=suggest.sub||"未定";
 
-  // 轉換時間字串為分鐘
-  function toMin(str){
+  // 字串 -> 分鐘
+  const toMin=str=>{
     const [h,m]=str.split(":").map(Number);
     return h*60+m;
+  };
+
+  // 根據比例算顏色（紅->黃->綠）
+  function getGradientColor(percent){
+    const r=percent<50 ? 255 : Math.round(255 - 2*(percent-50)*2.55);
+    const g=percent<50 ? Math.round(percent*2*2.55) : 255;
+    return `rgb(${r},${g},0)`;
   }
 
-  // 計算加權完成率
+  // 加權完成率 + 漸變色
   function calcWeightedProgress(){
     const rows=[...tbody.children];
     let total=0,done=0;
@@ -99,10 +104,11 @@ document.addEventListener("DOMContentLoaded",()=>{
     });
     const percent=total?Math.round((done/total)*100):0;
     progressBar.style.width=percent+"%";
+    progressBar.style.background=`linear-gradient(90deg, ${getGradientColor(percent-15)}, ${getGradientColor(percent+10)})`;
     percentTxt.textContent=percent+"%";
   }
 
-  // 新增一列時段
+  // 建立表格列
   function addRow(data={}){
     const row=document.createElement("tr");
     row.innerHTML=`
@@ -113,24 +119,20 @@ document.addEventListener("DOMContentLoaded",()=>{
       <td><button class="del-btn">刪除</button></td>
     `;
     tbody.appendChild(row);
-    // 每當時間/checkbox變動 -> 更新進度
     row.querySelectorAll("input").forEach(el=>el.addEventListener("input",calcWeightedProgress));
     row.querySelector(".del-btn").addEventListener("click",()=>{row.remove();calcWeightedProgress();});
   }
 
-  // 從儲存資料載入
+  // 載入儲存資料
   const savedData=JSON.parse(localStorage.getItem("todayTable")||"[]");
-  if(savedData.length){ savedData.forEach(r=>addRow(r)); }
-  else{
-    // 預設加一個範例時段
-    addRow({start:"17:00",end:"18:00",subj:"中文"});
-  }
+  if(savedData.length){ savedData.forEach(addRow); }
+  else{ addRow({start:"17:00",end:"18:00",subj:"中文"}); }
   calcWeightedProgress();
 
-  // 新增時段按鈕
+  // 新增時段
   document.getElementById("addRowBtn").addEventListener("click",()=>addRow());
 
-  // 儲存功能
+  // 儲存紀錄
   document.getElementById("saveBtn").addEventListener("click",()=>{
     const data=[...tbody.children].map(r=>({
       start:r.querySelector(".start").value,
@@ -142,7 +144,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     alert("✅ 已儲存今日紀錄！");
   });
 
-  // 清空功能
+  // 清空
   document.getElementById("clearBtn").addEventListener("click",()=>{
     if(confirm("確定要清空所有時段？")){
       localStorage.removeItem("todayTable");
@@ -151,8 +153,8 @@ document.addEventListener("DOMContentLoaded",()=>{
       calcWeightedProgress();
     }
   });
-
 });
 </script>
+
 </body>
 </html>
