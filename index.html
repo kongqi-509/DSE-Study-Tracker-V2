@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🗓️ 每日打卡</title>
+<title>📚 每日打卡</title>
 <style>
 body{font-family:"Noto Sans TC",sans-serif;background:#f2f5f8;margin:0;padding:20px;color:#222;}
 h1{text-align:center;color:#007bff;margin-bottom:10px;}
-.card{background:#fff;margin:20px auto;padding:20px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.1);max-width:800px;}
+.card{background:#fff;margin:20px auto;padding:20px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.1);max-width:900px;}
 table{width:100%;border-collapse:collapse;margin-top:10px;}
 th,td{padding:8px;text-align:center;border-bottom:1px solid #e0e0e0;}
 th{background:#0d6efd;color:white;}
@@ -16,14 +16,19 @@ button:hover{opacity:0.9;}
 .add-btn{background:#28a745;margin:10px 0;}
 .save-btn{background:#0d6efd;}
 .clear-btn{background:#6c757d;}
+.export-btn{background:#ff9800;}
+.history-btn{background:#17a2b8;}
 .del-btn{background:#dc3545;}
+.timer-btn{background:#7952b3;}
 .progress-container{background:#eee;height:18px;border-radius:10px;overflow:hidden;margin-top:12px;box-shadow:inset 0 1px 4px rgba(0,0,0,0.2);}
 .progress-bar{height:100%;width:0%;transition:width .4s ease,background .6s ease;}
 #percentTxt{text-align:center;font-weight:bold;margin-top:6px;}
 input[type=time],input[type=text]{padding:4px 6px;border:1px solid #ccc;border-radius:4px;}
 .check-cb{transform:scale(1.2);}
+#timerDisplay{font-size:1.4em;font-weight:bold;color:#7952b3;margin:10px 0;text-align:center;}
 </style>
 </head>
+
 <body>
 
 <h1>📚 每日打卡</h1>
@@ -46,22 +51,37 @@ input[type=time],input[type=text]{padding:4px 6px;border:1px solid #ccc;border-r
       <th>刪除</th>
     </tr>
   </thead>
-  <tbody>
-  </tbody>
+  <tbody></tbody>
 </table>
 
 <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
 <div id="percentTxt">0%</div>
 
-<div style="margin-top:15px;">
+<h3>⏱️ 計時器</h3>
+<div id="timerDisplay">00:00:00</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;">
+  <button class="timer-btn" id="startTimer">▶️ 開始</button>
+  <button class="timer-btn" id="pauseTimer">⏸ 暫停</button>
+  <button class="timer-btn" id="resetTimer">⏹ 歸零</button>
+</div>
+
+<div style="margin-top:15px;display:flex;flex-wrap:wrap;gap:10px;">
   <button class="save-btn" id="saveBtn">💾 儲存今日紀錄</button>
   <button class="clear-btn" id="clearBtn">🗑 清空全部</button>
+  <button class="history-btn" id="historyBtn">📜 查詢歷史</button>
+  <button class="export-btn" id="exportBtn">📤 匯出 CSV</button>
+</div>
+
+<div id="historyContainer" style="margin-top:15px;display:none;">
+  <h3>📅 歷史紀錄</h3>
+  <select id="historySelect"></select>
+  <pre id="historyOutput" style="background:#f8f9fa;padding:10px;border-radius:6px;white-space:pre-wrap;"></pre>
 </div>
 
 </div>
 
 <footer style="text-align:center;color:#777;font-size:0.85em;margin-top:20px;">
-© 2025 DSE Study Tracker
+© 2025 DSE Study Tracker
 </footer>
 
 <script>
@@ -70,89 +90,133 @@ document.addEventListener("DOMContentLoaded",()=>{
   const progressBar=document.getElementById("progressBar");
   const percentTxt=document.getElementById("percentTxt");
 
-  // 載入建議主副科
   const suggest=JSON.parse(localStorage.getItem("todaySuggestion")||"{}");
   document.getElementById("mainSubject").textContent=suggest.main||"未定";
   document.getElementById("subSubject").textContent=suggest.sub||"未定";
 
-  // 字串 -> 分鐘
-  const toMin=str=>{
-    const [h,m]=str.split(":").map(Number);
-    return h*60+m;
-  };
-
-  // 根據比例算顏色（紅->黃->綠）
-  function getGradientColor(percent){
-    const r=percent<50 ? 255 : Math.round(255 - 2*(percent-50)*2.55);
-    const g=percent<50 ? Math.round(percent*2*2.55) : 255;
-    return `rgb(${r},${g},0)`;
-  }
-
-  // 加權完成率 + 漸變色
-  function calcWeightedProgress(){
+  // === 進度計算：需完成全部才100% ===
+  function calcProgress(){
     const rows=[...tbody.children];
-    let total=0,done=0;
-    rows.forEach(r=>{
-      const start=r.querySelector(".start").value;
-      const end=r.querySelector(".end").value;
-      if(!start||!end)return;
-      const mins=toMin(end)-toMin(start);
-      if(mins>0){
-        total+=mins;
-        if(r.querySelector(".check-cb").checked) done+=mins;
-      }
-    });
-    const percent=total?Math.round((done/total)*100):0;
+    const total=rows.length;
+    const doneCount=rows.filter(r=>r.querySelector(".check-cb").checked).length;
+    const percent=total?Math.round((doneCount/total)*100):0;
+    const color=percent<50?
+        `rgb(255,${percent*5.1},0)`:`rgb(${255-(percent-50)*5.1*2},255,0)`;
     progressBar.style.width=percent+"%";
-    progressBar.style.background=`linear-gradient(90deg, ${getGradientColor(percent-15)}, ${getGradientColor(percent+10)})`;
+    progressBar.style.background=`linear-gradient(90deg,orange,${color})`;
     percentTxt.textContent=percent+"%";
   }
 
-  // 建立表格列
+  // 新增一列
   function addRow(data={}){
     const row=document.createElement("tr");
     row.innerHTML=`
-      <td><input type="time" class="start" value="${data.start||''}"></td>
-      <td><input type="time" class="end" value="${data.end||''}"></td>
-      <td><input type="text" class="subj" placeholder="科目/內容" value="${data.subj||''}"></td>
-      <td><input type="checkbox" class="check-cb" ${data.done?'checked':''}></td>
+      <td><input type="time" class="start" value="${data.start||""}"></td>
+      <td><input type="time" class="end" value="${data.end||""}"></td>
+      <td><input type="text" class="subj" placeholder="科目/內容" value="${data.subj||""}"></td>
+      <td><input type="checkbox" class="check-cb" ${data.done?"checked":""}></td>
       <td><button class="del-btn">刪除</button></td>
     `;
+    row.querySelectorAll("input").forEach(i=>i.addEventListener("input",calcProgress));
+    row.querySelector(".del-btn").addEventListener("click",()=>{row.remove();calcProgress();});
     tbody.appendChild(row);
-    row.querySelectorAll("input").forEach(el=>el.addEventListener("input",calcWeightedProgress));
-    row.querySelector(".del-btn").addEventListener("click",()=>{row.remove();calcWeightedProgress();});
   }
 
-  // 載入儲存資料
-  const savedData=JSON.parse(localStorage.getItem("todayTable")||"[]");
-  if(savedData.length){ savedData.forEach(addRow); }
-  else{ addRow({start:"17:00",end:"18:00",subj:"中文"}); }
-  calcWeightedProgress();
+  // 載入今天資料
+  const todayKey=new Date().toISOString().split("T")[0];
+  const allData=JSON.parse(localStorage.getItem("historyData")||"{}");
+  if(allData[todayKey]){
+    allData[todayKey].forEach(addRow);
+  }else{
+    addRow({start:"17:00",end:"18:00",subj:"中文"});
+  }
+  calcProgress();
 
-  // 新增時段
-  document.getElementById("addRowBtn").addEventListener("click",()=>addRow());
-
-  // 儲存紀錄
+  // === 儲存 ===
   document.getElementById("saveBtn").addEventListener("click",()=>{
-    const data=[...tbody.children].map(r=>({
+    const rows=[...tbody.children].map(r=>({
       start:r.querySelector(".start").value,
       end:r.querySelector(".end").value,
       subj:r.querySelector(".subj").value,
       done:r.querySelector(".check-cb").checked
     }));
-    localStorage.setItem("todayTable",JSON.stringify(data));
-    alert("✅ 已儲存今日紀錄！");
+    allData[todayKey]=rows;
+    localStorage.setItem("historyData",JSON.stringify(allData));
+    alert("✅ 今日紀錄已儲存！");
   });
 
-  // 清空
+  // === 清空 ===
   document.getElementById("clearBtn").addEventListener("click",()=>{
-    if(confirm("確定要清空所有時段？")){
-      localStorage.removeItem("todayTable");
+    if(confirm("確定要清空今天資料？")){
+      delete allData[todayKey];
+      localStorage.setItem("historyData",JSON.stringify(allData));
       tbody.innerHTML="";
       addRow();
-      calcWeightedProgress();
+      calcProgress();
     }
   });
+
+  // 新增列
+  document.getElementById("addRowBtn").addEventListener("click",()=>addRow());
+
+  // === 匯出CSV ===
+  document.getElementById("exportBtn").addEventListener("click",()=>{
+    let csv="日期,開始,結束,內容,完成\n";
+    for(const [date,rows] of Object.entries(allData)){
+      rows.forEach(r=>{
+        csv+=`${date},${r.start},${r.end},${r.subj},${r.done?"是":"否"}\n`;
+      });
+    }
+    const blob=new Blob([csv],{type:"text/csv"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="打卡紀錄.csv";
+    a.click();
+  });
+
+  // === 查看歷史 ===
+  const histCont=document.getElementById("historyContainer");
+  const histSel=document.getElementById("historySelect");
+  const histOut=document.getElementById("historyOutput");
+  document.getElementById("historyBtn").addEventListener("click",()=>{
+    histCont.style.display=histCont.style.display==="none"?"block":"none";
+    histSel.innerHTML="";
+    Object.keys(allData).sort().forEach(d=>{
+      const opt=document.createElement("option");
+      opt.value=d;opt.textContent=d;
+      histSel.appendChild(opt);
+    });
+    histOut.textContent="";
+  });
+  histSel.addEventListener("change",()=>{
+    const d=histSel.value;
+    const rec=allData[d]||[];
+    histOut.textContent=rec.map((r,i)=>(
+      `${i+1}. ${r.start}~${r.end} ${r.subj} ${r.done?"✅完成":"❌未完成"}`
+    )).join("\n");
+  });
+
+  // === 計時器 ===
+  const timerDisplay=document.getElementById("timerDisplay");
+  let seconds=0,timer=null;
+  const fmt=s=>{
+    const h=Math.floor(s/3600).toString().padStart(2,"0");
+    const m=Math.floor((s%3600)/60).toString().padStart(2,"0");
+    const sec=(s%60).toString().padStart(2,"0");
+    return `${h}:${m}:${sec}`;
+  };
+  const updateTimer=()=>timerDisplay.textContent=fmt(seconds);
+
+  document.getElementById("startTimer").addEventListener("click",()=>{
+    if(!timer) timer=setInterval(()=>{seconds++;updateTimer();},1000);
+  });
+  document.getElementById("pauseTimer").addEventListener("click",()=>{
+    clearInterval(timer);timer=null;
+  });
+  document.getElementById("resetTimer").addEventListener("click",()=>{
+    clearInterval(timer);timer=null;seconds=0;updateTimer();
+  });
+
 });
 </script>
 
