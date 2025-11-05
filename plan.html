@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📘 調整學習計劃</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{font-family:"Noto Sans TC",sans-serif;background:#f4f6f8;margin:0;padding:20px;color:#222;}
+h1{text-align:center;color:#007bff;}
+.card{background:#fff;margin:20px auto;padding:20px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.1);max-width:700px;}
+table{width:100%;border-collapse:collapse;margin-top:10px;}
+th,td{padding:8px;text-align:center;border-bottom:1px solid #eee;}
+th{background:#f0f3f6;}
+button{background:#007bff;color:#fff;border:none;border-radius:6px;padding:10px 15px;font-size:1em;margin-top:10px;}
+button:hover{background:#0056b3;cursor:pointer;}
+canvas{max-width:100%;margin-top:20px;}
+#msg{margin-top:15px;padding:10px;border-radius:6px;text-align:center;font-weight:bold;}
+.success{background:#e8ffea;color:#1a7f37;border:1px solid #1a7f37;}
+.error{background:#ffecec;color:#b71c1c;border:1px solid #b71c1c;}
+small{color:#666;}
+#backBtn{display:block;width:100%;text-align:center;background:#6c757d;}
+#backBtn:hover{background:#495057;}
+</style>
+</head>
+<body>
+<h1>🧠 調整學習計劃</h1>
+
+<div class="card">
+  <h2>📘 輸入各科 Predicted Grade</h2>
+  <table id="gradeTable">
+    <thead><tr><th>科目</th><th>預測等級</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <button id="calcBtn">📊 自動分析與生成建議</button>
+  <canvas id="pieChart"></canvas>
+</div>
+
+<div class="card">
+  <h2>🎯 今日主/副科自動建議</h2>
+  <p>📅 日期：<span id="todayDate"></span></p>
+  <div id="autoResult">尚未生成</div>
+  <div id="msg"></div>
+  <button id="backBtn">⬅️ 返回每日打卡</button>
+  <small>結果將自動儲存並回到 <a href="index.html">打卡頁</a>。</small>
+</div>
+
+<script>
+const subjects=["中文","英文","數學","化學","M2","物理","經濟","會計","ICT"];
+const gradeValue={ "5**":7,"5*":6,"5":5,"4":4,"3":3,"2":2,"1":1 };
+const todayStr=new Date().toLocaleDateString("zh-HK");
+
+const tbody=document.querySelector("#gradeTable tbody");
+subjects.forEach(s=>{
+  const row=document.createElement("tr");
+  row.innerHTML=`<td>${s}</td>
+  <td><select id="g_${s}">
+    <option value="">--選擇等級--</option>
+    ${Object.keys(gradeValue).map(g=>`<option>${g}</option>`).join("")}
+  </select></td>`;
+  tbody.appendChild(row);
+});
+document.getElementById("todayDate").textContent=todayStr;
+
+let chart;
+function calcWeights(){
+  let scores={};
+  subjects.forEach(s=>{
+    const g=document.getElementById("g_"+s).value;
+    const val=gradeValue[g]||0;
+    scores[s]=val? (8-val):0;
+  });
+  return scores;
+}
+function suggestSubjects(weights){
+  const entries=Object.entries(weights).filter(([_,v])=>v>0);
+  if(entries.length===0)return{main:"未定",sub:"未定"};
+  entries.sort((a,b)=>b[1]-a[1]);
+  const main=entries[0][0];
+  const sub=entries[1]?entries[1][0]:entries[0][0];
+  return{main,sub};
+}
+function drawChart(weights){
+  const data=Object.values(weights);
+  const labels=Object.keys(weights);
+  const ctx=document.getElementById("pieChart").getContext("2d");
+  if(chart)chart.destroy();
+  chart=new Chart(ctx,{
+    type:"pie",
+    data:{
+      labels:labels,
+      datasets:[{
+        data:data,
+        backgroundColor:["#FF6384","#36A2EB","#FFCE56","#4BC0C0","#9966FF","#FF9F40","#8BC34A","#E91E63","#9C27B0","#00BCD4"]
+      }]
+    },
+    options:{plugins:{legend:{position:"right"},title:{display:true,text:"建議溫習時間分配"}}}
+  });
+}
+
+document.getElementById("calcBtn").addEventListener("click",()=>{
+  const weights=calcWeights();
+  drawChart(weights);
+  const {main,sub}=suggestSubjects(weights);
+  document.getElementById("autoResult").innerHTML=`💡 建議主科：<b>${main}</b> ｜ 副科：<b>${sub}</b>`;
+  // 儲存到 localStorage
+  localStorage.setItem("todaySuggestion",JSON.stringify({date:todayStr,main,sub,weights}));
+  const msgDiv=document.getElementById("msg");
+  msgDiv.className="success";
+  msgDiv.innerHTML=`✅ 已自動生成並儲存。<br>3 秒後將返回每日打卡頁…`;
+  setTimeout(()=>window.location.href="index.html",3000);
+});
+
+document.getElementById("backBtn").addEventListener("click",()=>window.location.href="index.html"));
+</script>
+</body>
+</html>
