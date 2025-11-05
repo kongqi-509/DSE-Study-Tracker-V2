@@ -6,7 +6,8 @@
 <title>📚 每日打卡</title>
 <style>
 body{font-family:"Noto Sans TC",sans-serif;background:#f2f5f8;margin:0;padding:20px;color:#222;}
-h1{text-align:center;color:#007bff;margin-bottom:10px;}
+h1{text-align:center;color:#007bff;margin-bottom:5px;}
+#datetime{ text-align:center;font-weight:bold;color:#333;margin-bottom:15px;}
 .card{background:#fff;margin:20px auto;padding:20px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.1);max-width:900px;}
 table{width:100%;border-collapse:collapse;margin-top:10px;}
 th,td{padding:8px;text-align:center;border-bottom:1px solid #e0e0e0;}
@@ -30,16 +31,17 @@ input[type=time],input[type=text]{padding:4px 6px;border:1px solid #ccc;border-r
 </head>
 
 <body>
-
 <h1>📚 每日打卡</h1>
+<div id="datetime">--:--:--</div>
 
 <div class="card">
   <h2>🧠 今日建議科目</h2>
-  <p>💡 主科：<b id="mainSubject">尚未載入</b>　🌿 副科：<b id="subSubject">尚未載入</b></p>
+  <p>💡 主科：<b id="mainSubject">尚未載入</b>　
+     🌿 副科：<b id="subSubject">尚未載入</b></p>
   <hr>
 
   <h2>🕒 今日時段設定</h2>
-  <button class="add-btn" id="addRowBtn">➕ 新增時段</button>
+  <button class="add-btn" id="addRowBtn">➕ 新增時段（至少三個）</button>
   <table id="todayTable">
     <thead>
       <tr>
@@ -88,6 +90,17 @@ document.addEventListener("DOMContentLoaded",()=>{
   const progressBar=document.getElementById("progressBar");
   const percentTxt=document.getElementById("percentTxt");
 
+  // --- 實時日期＆時間 ---
+  function updateDateTime(){
+    const now=new Date();
+    const week=["日","一","二","三","四","五","六"];
+    const str=now.toLocaleTimeString("zh-HK",{hour12:false})+"　"+now.toLocaleDateString("zh-HK",{year:"numeric",month:"2-digit",day:"2-digit"})+`（週${week[now.getDay()]}）`;
+    document.getElementById("datetime").textContent=str;
+  }
+  setInterval(updateDateTime,1000);
+  updateDateTime();
+
+  // --- 載入建議科目 (from plan) ---
   const suggest=JSON.parse(localStorage.getItem("todaySuggestion")||"{}");
   document.getElementById("mainSubject").textContent=suggest.main||"未定";
   document.getElementById("subSubject").textContent=suggest.sub||"未定";
@@ -118,26 +131,30 @@ document.addEventListener("DOMContentLoaded",()=>{
       <td><input type="checkbox" class="check-cb" ${data.done?"checked":""}></td>
       <td><button class="del-btn">刪除</button></td>
     `;
-    // 每個輸入或勾選都會更新進度
     row.querySelectorAll("input").forEach(i=>i.addEventListener("input",calcProgress));
-    // 刪除列後也重新計算進度
     row.querySelector(".del-btn").addEventListener("click",()=>{
+      if(tbody.children.length<=3){alert("❗ 至少需保留三個時段");return;}
       row.remove();
       calcProgress();
     });
     tbody.appendChild(row);
-    calcProgress(); // 新增完立即重新計算
+    calcProgress();
   }
 
-  // --- 載入當日資料 ---
+  // --- 載入今天資料（至少三列） ---
   if(allData[todayKey]) allData[todayKey].forEach(addRow);
-  else addRow({start:"17:00",end:"18:00",subj:"中文"});
+  else{
+    for(let i=0;i<3;i++){
+      addRow({start:"",end:"",subj:i===0?suggest.main||"":suggest.sub||""});
+    }
+  }
 
-  // --- 新增一列 ---
+  // --- 新增時段 ---
   document.getElementById("addRowBtn").addEventListener("click",()=>addRow());
 
   // --- 儲存 ---
   document.getElementById("saveBtn").addEventListener("click",()=>{
+    if(tbody.children.length<3){alert("⚠️ 必須至少三個時段！");return;}
     const rows=[...tbody.children].map(r=>({
       start:r.querySelector(".start").value,
       end:r.querySelector(".end").value,
@@ -155,7 +172,9 @@ document.addEventListener("DOMContentLoaded",()=>{
       delete allData[todayKey];
       localStorage.setItem("historyData",JSON.stringify(allData));
       tbody.innerHTML="";
-      addRow();
+      for(let i=0;i<3;i++){
+        addRow({subj:i===0?suggest.main||"":suggest.sub||""});
+      }
       calcProgress();
     }
   });
@@ -192,32 +211,29 @@ document.addEventListener("DOMContentLoaded",()=>{
   histSel.addEventListener("change",()=>{
     const d=histSel.value;
     const rec=allData[d]||[];
-    histOut.textContent=rec.map((r,i)=>
-      `${i+1}. ${r.start}~${r.end} ${r.subj} ${r.done?"✅完成":"❌未完成"}`
-    ).join("\n");
+    const total=rec.length||1;
+    const done=rec.filter(r=>r.done).length;
+    const percent=Math.round((done/total)*100);
+    histOut.textContent=`完成率：${percent}%\n`+
+      rec.map((r,i)=>`${i+1}. ${r.start}~${r.end} ${r.subj} ${r.done?"✅":"❌"}`).join("\n");
   });
 
-  // --- 計時器功能 ---
+  // --- 計時器 ---
   const timerDisplay=document.getElementById("timerDisplay");
-  let sec=0,timer=null;
+  let sec=0, timer=null;
   const fmt=s=>{
-    const h=Math.floor(s/3600).toString().padStart(2,"0");
-    const m=Math.floor((s%3600)/60).toString().padStart(2,"0");
-    const se=(s%60).toString().padStart(2,"0");
+    const h=String(Math.floor(s/3600)).padStart(2,"0");
+    const m=String(Math.floor((s%3600)/60)).padStart(2,"0");
+    const se=String(s%60).padStart(2,"0");
     return `${h}:${m}:${se}`;
   };
-  function updateTimer(){timerDisplay.textContent=fmt(sec);}
+  const updateTimer=()=>timerDisplay.textContent=fmt(sec);
   document.getElementById("startTimer").addEventListener("click",()=>{
     if(!timer) timer=setInterval(()=>{sec++;updateTimer();},1000);
   });
-  document.getElementById("pauseTimer").addEventListener("click",()=>{
-    clearInterval(timer);timer=null;
-  });
-  document.getElementById("resetTimer").addEventListener("click",()=>{
-    clearInterval(timer);timer=null;sec=0;updateTimer();
-  });
+  document.getElementById("pauseTimer").addEventListener("click",()=>{clearInterval(timer);timer=null;});
+  document.getElementById("resetTimer").addEventListener("click",()=>{clearInterval(timer);timer=null;sec=0;updateTimer();});
 });
 </script>
-
 </body>
 </html>
