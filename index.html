@@ -87,128 +87,173 @@ input[type=time],input[type=text]{padding:4px 6px;border:1px solid #ccc;border-r
 </footer>
 
 <script>
-document.addEventListener("DOMContentLoaded",()=>{
-  // ======== 顯示時間與星期 ========
-  function updateDateTime(){
-    const now=new Date(),week=["日","一","二","三","四","五","六"];
-    document.getElementById("datetime").textContent=
-      now.toLocaleTimeString("zh-HK",{hour12:false})+"　"+
-      now.toLocaleDateString("zh-HK")+`（週${week[now.getDay()]}）`;
+document.addEventListener("DOMContentLoaded", () => {
+  // ======== 顯示時間與星期 (保持不變) ========
+  function updateDateTime() {
+    const now = new Date(), week = ["日", "一", "二", "三", "四", "五", "六"];
+    document.getElementById("datetime").textContent =
+      now.toLocaleTimeString("zh-HK", { hour12: false }) + "　" +
+      now.toLocaleDateString("zh-HK") + `（週${week[now.getDay()]}）`;
   }
-  setInterval(updateDateTime,1000);updateDateTime();
+  setInterval(updateDateTime, 1000); updateDateTime();
 
-  // ======== 打開 plan.html ========
-  document.getElementById("gotoPlan").addEventListener("click",()=>{
-    window.location.href="plan.html";
-  });
+  // ======== 路由與基礎資料 (保持不變) ========
+  document.getElementById("gotoPlan").addEventListener("click", () => { window.location.href = "plan.html"; });
+  const suggest = JSON.parse(localStorage.getItem("todaySuggestion") || "{}");
+  document.getElementById("mainSubject").textContent = suggest.main || "未定";
+  document.getElementById("subSubject").textContent = suggest.sub || "未定";
+  document.getElementById("planDate").textContent = suggest.date ? `設定於 ${suggest.date}` : "";
 
-  // ======== 顯示建議科目 ========
-  const suggest=JSON.parse(localStorage.getItem("todaySuggestion")||"{}");
-  document.getElementById("mainSubject").textContent=suggest.main||"未定";
-  document.getElementById("subSubject").textContent=suggest.sub||"未定";
-  document.getElementById("planDate").textContent=suggest.date?`設定於 ${suggest.date}`:"";
+  const tbody = document.querySelector("#todayTable tbody");
+  const progressBar = document.getElementById("progressBar");
+  const percentTxt = document.getElementById("percentTxt");
+  const todayKey = new Date().toISOString().split("T")[0];
+  const allData = JSON.parse(localStorage.getItem("historyData") || "{}");
 
-  // ======== 主要資料與進度 ========
-  const tbody=document.querySelector("#todayTable tbody");
-  const progressBar=document.getElementById("progressBar");
-  const percentTxt=document.getElementById("percentTxt");
-  const todayKey=new Date().toISOString().split("T")[0];
-  const allData=JSON.parse(localStorage.getItem("historyData")||"{}");
-
-  function calcProgress(){
-    const rows=[...tbody.children];
-    const total=rows.length;
-    const done=rows.filter(r=>r.querySelector(".check-cb").checked).length;
-    const percent=total?Math.round((done/total)*100):0;
-    const color=percent<50?`rgb(255,${percent*5.1},0)`:`rgb(${255-(percent-50)*5.1*2},255,0)`;
-    progressBar.style.width=percent+"%";
-    progressBar.style.background=`linear-gradient(90deg,orange,${color})`;
-    percentTxt.textContent=percent+"%";
+  // ======== 進度計算 (保持不變) ========
+  function calcProgress() {
+    const rows = [...tbody.children];
+    const total = rows.length;
+    const done = rows.filter(r => r.querySelector(".check-cb").checked).length;
+    const percent = total ? Math.round((done / total) * 100) : 0;
+    const color = percent < 50 ? `rgb(255,${percent * 5.1},0)` : `rgb(${255 - (percent - 50) * 5.1 * 2},255,0)`;
+    progressBar.style.width = percent + "%";
+    progressBar.style.background = `linear-gradient(90deg,orange,${color})`;
+    percentTxt.textContent = percent + "%";
   }
 
-  function addRow(data={}){
-    const row=document.createElement("tr");
-    row.innerHTML=`
-      <td><input type="time" class="start" value="${data.start||""}"></td>
-      <td><input type="time" class="end" value="${data.end||""}"></td>
-      <td><input type="text" class="subj" value="${data.subj||""}" placeholder="科目/內容"></td>
-      <td><input type="checkbox" class="check-cb" ${data.done?"checked":""}></td>
+  // ======== 改良版：新增時段 (加入自動計時邏輯) ========
+  function addRow(data = {}) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><input type="time" class="start" value="${data.start || ""}"></td>
+      <td><input type="time" class="end" value="${data.end || ""}"></td>
+      <td>
+        <div style="display:flex; gap:4px;">
+          <input type="text" class="subj" value="${data.subj || ""}" placeholder="內容" style="flex:1;">
+          <button class="timer-btn run-btn" style="padding:2px 6px; font-size:0.8em;">▶️</button>
+        </div>
+      </td>
+      <td><input type="checkbox" class="check-cb" ${data.done ? "checked" : ""}></td>
       <td><button class="del-btn">刪除</button></td>`;
-    row.querySelectorAll("input").forEach(i=>i.addEventListener("input",calcProgress));
-    row.querySelector(".del-btn").addEventListener("click",()=>{
-      if(tbody.children.length<=3){alert("❗ 至少需保留三個時段");return;}
-      row.remove();calcProgress();
+
+    // 監聽「▶️」按鈕：啟動自動流程
+    row.querySelector(".run-btn").addEventListener("click", function() {
+      const mins = prompt("請輸入預計執行分鐘數：", "25");
+      if (mins === null || isNaN(mins) || mins <= 0) return;
+
+      // 1. 自動填寫開始時間
+      const now = new Date();
+      row.querySelector(".start").value = now.toTimeString().slice(0, 5);
+      
+      // 2. 啟動下方大計時器 (倒數模式)
+      startCountdown(parseInt(mins) * 60, row, this);
     });
-    tbody.appendChild(row);calcProgress();
+
+    row.querySelectorAll("input").forEach(i => i.addEventListener("input", calcProgress));
+    row.querySelector(".del-btn").addEventListener("click", () => {
+      if (tbody.children.length <= 3) { alert("❗ 至少需保留三個時段"); return; }
+      row.remove(); calcProgress();
+    });
+    tbody.appendChild(row); calcProgress();
   }
 
-  if(allData[todayKey]) allData[todayKey].forEach(addRow);
-  else for(let i=0;i<3;i++)
-    addRow({subj:i===0?suggest.main||"":suggest.sub||""});
+  // ======== 計時器核心變數 ========
+  const timerDisplay = document.getElementById("timerDisplay");
+  let sec = 0, timer = null;
+  const fmt = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const updateTimer = () => timerDisplay.textContent = fmt(sec);
 
-  document.getElementById("addRowBtn").addEventListener("click",()=>addRow());
+  // 專門處理「自動完成」的倒數函數
+  function startCountdown(duration, row, btn) {
+    if(timer) clearInterval(timer);
+    sec = duration;
+    updateTimer();
+    btn.textContent = "⏳";
+    btn.disabled = true;
 
-  document.getElementById("saveBtn").addEventListener("click",()=>{
-    if(tbody.children.length<3){alert("⚠️ 至少三個時段！");return;}
-    const rows=[...tbody.children].map(r=>({
-      start:r.querySelector(".start").value,
-      end:r.querySelector(".end").value,
-      subj:r.querySelector(".subj").value,
-      done:r.querySelector(".check-cb").checked
-    }));
-    allData[todayKey]=rows;
-    localStorage.setItem("historyData",JSON.stringify(allData));
-    alert("✅ 今日紀錄已儲存！");
+    timer = setInterval(() => {
+      sec--;
+      updateTimer();
+      if (sec <= 0) {
+        clearInterval(timer);
+        timer = null;
+        // 3. 時間到：填寫結束時間並勾選
+        const now = new Date();
+        row.querySelector(".end").value = now.toTimeString().slice(0, 5);
+        row.querySelector(".check-cb").checked = true;
+        btn.textContent = "✅";
+        calcProgress();
+        alert("⏰ 時間到！任務已自動標記完成。");
+      }
+    }, 1000);
+  }
+
+  // ======== 計時器按鈕手動控制 (修正) ========
+  document.getElementById("startTimer").addEventListener("click", () => {
+    if (!timer) timer = setInterval(() => { sec++; updateTimer(); }, 1000);
+  });
+  document.getElementById("pauseTimer").addEventListener("click", () => { clearInterval(timer); timer = null; });
+  document.getElementById("resetTimer").addEventListener("click", () => { 
+    clearInterval(timer); timer = null; sec = 0; updateTimer(); 
+    document.querySelectorAll(".run-btn").forEach(b => { b.disabled = false; b.textContent = "▶️"; });
   });
 
-  document.getElementById("clearBtn").addEventListener("click",()=>{
-    if(confirm("確定要清空今天資料？")){
+  // ======== 儲存與匯出 (保持不變) ========
+  if (allData[todayKey]) allData[todayKey].forEach(addRow);
+  else for (let i = 0; i < 3; i++) addRow({ subj: i === 0 ? suggest.main || "" : suggest.sub || "" });
+
+  document.getElementById("addRowBtn").addEventListener("click", () => addRow());
+
+  document.getElementById("saveBtn").addEventListener("click", () => {
+    const rows = [...tbody.children].map(r => ({
+      start: r.querySelector(".start").value,
+      end: r.querySelector(".end").value,
+      subj: r.querySelector(".subj").value,
+      done: r.querySelector(".check-cb").checked
+    }));
+    allData[todayKey] = rows;
+    localStorage.setItem("historyData", JSON.stringify(allData));
+    alert("✅ 紀錄已儲存！");
+  });
+
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    if (confirm("確定要清空今天資料？")) {
       delete allData[todayKey];
-      localStorage.setItem("historyData",JSON.stringify(allData));
-      tbody.innerHTML="";for(let i=0;i<3;i++) addRow({subj:i===0?suggest.main||"":suggest.sub||""});
+      localStorage.setItem("historyData", JSON.stringify(allData));
+      tbody.innerHTML = ""; for (let i = 0; i < 3; i++) addRow({ subj: i === 0 ? suggest.main || "" : suggest.sub || "" });
       calcProgress();
     }
   });
 
-  document.getElementById("exportBtn").addEventListener("click",()=>{
-    let csv="日期,開始,結束,內容,完成\n";
-    for(const [date,rows] of Object.entries(allData)){
-      rows.forEach(r=>{csv+=`${date},${r.start},${r.end},${r.subj},${r.done?"是":"否"}\n`;});
+  document.getElementById("exportBtn").addEventListener("click", () => {
+    let csv = "\uFEFF日期,開始,結束,內容,完成\n"; // 加入 BOM 防止 Excel 亂碼
+    for (const [date, rows] of Object.entries(allData)) {
+      rows.forEach(r => { csv += `${date},${r.start},${r.end},${r.subj},${r.done ? "是" : "否"}\n`; });
     }
-    const blob=new Blob([csv],{type:"text/csv"});
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(blob);
-    a.download="打卡紀錄.csv";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `打卡紀錄_${todayKey}.csv`;
     a.click();
   });
 
-  const histCont=document.getElementById("historyContainer");
-  const histSel=document.getElementById("historySelect");
-  const histOut=document.getElementById("historyOutput");
-  document.getElementById("historyBtn").addEventListener("click",()=>{
-    histCont.style.display=histCont.style.display==="none"?"block":"none";
-    histSel.innerHTML="";
-    Object.keys(allData).sort().reverse().forEach(d=>{
-      const o=document.createElement("option");o.value=d;o.textContent=d;histSel.appendChild(o);
+  // 歷史紀錄顯示 (保持不變)
+  const histCont = document.getElementById("historyContainer"), histSel = document.getElementById("historySelect"), histOut = document.getElementById("historyOutput");
+  document.getElementById("historyBtn").addEventListener("click", () => {
+    histCont.style.display = histCont.style.display === "none" ? "block" : "none";
+    histSel.innerHTML = "";
+    Object.keys(allData).sort().reverse().forEach(d => {
+      const o = document.createElement("option"); o.value = d; o.textContent = d; histSel.appendChild(o);
     });
   });
-  histSel.addEventListener("change",()=>{
-    const d=histSel.value;const rec=allData[d]||[];
-    const total=rec.length||1;const done=rec.filter(r=>r.done).length;
-    const percent=Math.round((done/total)*100);
-    histOut.textContent=`完成率：${percent}%\n`+
-      rec.map((r,i)=>`${i+1}. ${r.start}~${r.end} ${r.subj} ${r.done?"✅":"❌"}`).join("\n");
+  histSel.addEventListener("change", () => {
+    const d = histSel.value, rec = allData[d] || [];
+    const total = rec.length || 1, done = rec.filter(r => r.done).length, percent = Math.round((done / total) * 100);
+    histOut.textContent = `完成率：${percent}%\n` + rec.map((r, i) => `${i + 1}. ${r.start}~${r.end} ${r.subj} ${r.done ? "✅" : "❌"}`).join("\n");
   });
-
-  // ======== 計時器 ========
-  const timerDisplay=document.getElementById("timerDisplay");
-  let sec=0,timer=null;
-  const fmt=s=>`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-  const updateTimer=()=>timerDisplay.textContent=fmt(sec);
-  document.getElementById("startTimer").addEventListener("click",()=>{if(!timer)timer=setInterval(()=>{sec++;updateTimer();},1000);});
-  document.getElementById("pauseTimer").addEventListener("click",()=>{clearInterval(timer);timer=null;});
-  document.getElementById("resetTimer").addEventListener("click",()=>{clearInterval(timer);timer=null;sec=0;updateTimer();});
 });
+
 </script>
 
 </body>
